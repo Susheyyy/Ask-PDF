@@ -1,0 +1,10 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+venv/
+.ipynb_checkpoints/
+data/chroma/*
+!data/chroma/.gitkeep
+data/samples/*.pdf
+requirements.lock
