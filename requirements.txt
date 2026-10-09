@@ -10,4 +10,4 @@ chromadb>=0.5
 python-dotenv>=1.0
 
 # Optional: OCR for scanned PDFs (also needs the `tesseract` binary installed on your system)
-# pytesseract>=0.3
+pytesseract>=0.3

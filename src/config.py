@@ -17,7 +17,7 @@ def _bool(name: str, default: bool) -> bool:
 
 @dataclass(frozen=True)
 class Settings:
-    llm_model: str = os.getenv("LLM_MODEL", "gemini-2.5-flash")
+    llm_model: str = os.getenv("LLM_MODEL", "gemini-3.8-flash")
     llm_temperature: float = float(os.getenv("LLM_TEMPERATURE", "0.2"))
 
     embedding_model: str = os.getenv("EMBEDDING_MODEL", "BAAI/bge-small-en-v1.5")
@@ -32,6 +32,7 @@ class Settings:
     max_pages: int = int(os.getenv("MAX_PAGES", "300"))
 
     ocr_enabled: bool = _bool("OCR_ENABLED", True)
+    extract_tables: bool = _bool("EXTRACT_TABLES", False)
     share: bool = _bool("GRADIO_SHARE", False)
 
 
@@ -41,5 +42,6 @@ settings = Settings()
 def require_api_key() -> None:
     if not os.getenv("GOOGLE_API_KEY"):
         raise RuntimeError(
-            "GOOGLE_API_KEY is not set. Copy .env.example to .env and add your key."
+            "GOOGLE_API_KEY is not set. Add it to the .env file in the project root "
+            "(next to app.py) and restart the app."
         )

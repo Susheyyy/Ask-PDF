@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Callable
 
 import pdfplumber
 from langchain_core.documents import Document
@@ -26,6 +27,8 @@ def _table_to_markdown(table: list[list[str | None]]) -> str:
 
 
 def _tables_markdown(page) -> str:
+    if not settings.extract_tables:
+        return ""
     try:
         tables = [_table_to_markdown(t) for t in page.extract_tables()]
     except Exception:
@@ -47,8 +50,14 @@ def _ocr_page(page) -> str:
         return ""
 
 
-def load_pdf(path: str | os.PathLike) -> list[Document]:
-    """Return one Document per page that has text. Raises ValueError on bad input."""
+def load_pdf(
+    path: str | os.PathLike,
+    on_progress: Callable[[int, int], None] | None = None,
+) -> list[Document]:
+    """Return one Document per page that has text. Raises ValueError on bad input.
+
+    on_progress(done_pages, total_pages) is called after each page.
+    """
     path = Path(path)
     size_mb = path.stat().st_size / 1_000_000
     if size_mb > settings.max_pdf_mb:
@@ -58,10 +67,9 @@ def load_pdf(path: str | os.PathLike) -> list[Document]:
 
     docs: list[Document] = []
     with pdfplumber.open(path) as pdf:
-        if len(pdf.pages) > settings.max_pages:
-            raise ValueError(
-                f"{path.name} has {len(pdf.pages)} pages (limit {settings.max_pages})."
-            )
+        total = len(pdf.pages)
+        if total > settings.max_pages:
+            raise ValueError(f"{path.name} has {total} pages (limit {settings.max_pages}).")
         for number, page in enumerate(pdf.pages, start=1):
             text = page.extract_text() or ""
             if not text.strip():
@@ -74,6 +82,9 @@ def load_pdf(path: str | os.PathLike) -> list[Document]:
                         metadata={"source": path.name, "page": number},
                     )
                 )
+            page.flush_cache()  
+            if on_progress:
+                on_progress(number, total)
 
     if not docs:
         raise ValueError(
