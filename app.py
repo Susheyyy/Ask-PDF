@@ -1,3 +1,4 @@
+"""Ask PDF - Gradio entry point.  Run with:  python app.py"""
 from __future__ import annotations
 
 import html
@@ -10,6 +11,8 @@ import gradio as gr
 from src.config import settings
 from src.qa import answer_stream
 from src.vectorstore import ingest_pdf, warmup
+
+MAX_DOCS = settings.max_docs
 
 THEME = gr.themes.Base(
     primary_hue="pink",
@@ -88,7 +91,7 @@ footer { display: none !important; }
 #shell { gap: 0 !important; flex-wrap: nowrap !important; min-height: 100dvh; }
 #side {
     flex: 0 0 320px !important; min-width: 320px !important; max-width: 320px;
-    padding: 28px 22px !important; gap: 14px !important;
+    padding: 28px 22px !important; gap: 10px !important;
     background: var(--surface); border-right: 1px solid var(--line);
 }
 #main { flex: 1 1 auto !important; min-width: 0; padding: 22px 40px 24px !important; }
@@ -106,17 +109,35 @@ footer { display: none !important; }
 .brand .mark::after { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--bg); }
 .brand .name { font-size: 1.2rem; font-weight: 600; letter-spacing: -.01em; }
 .tagline { margin: 6px 0 0; font-size: .86rem; color: var(--muted); line-height: 1.45; }
-.model-line { margin-top: 10px; font-size: .74rem; color: var(--muted); font-family: ui-monospace, Consolas, monospace; }
+.model-line { margin: 8px 0 6px; font-size: .74rem; color: var(--muted); font-family: ui-monospace, Consolas, monospace; }
 .model-line b { color: var(--accent); font-weight: 500; }
-.label { margin: 10px 0 0; font-size: .72rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.label { font-size: .72rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 
-#add-btn { width: 100%; border-radius: 12px !important; font-weight: 600; }
-#files { background: transparent !important; border: 1px dashed var(--line) !important; border-radius: 12px !important; }
-#files .file-preview, #files table { font-size: .85rem; }
+#drop {
+    background: transparent !important; border: 1px dashed var(--line) !important;
+    border-radius: 14px !important; min-height: 96px; transition: border-color .15s ease, background .15s ease;
+}
+#drop:hover { border-color: var(--accent-line) !important; background: var(--accent-soft) !important; }
+#drop * { color: var(--muted) !important; }
 
+#docs-head { align-items: center !important; flex-wrap: nowrap !important; gap: 8px !important; margin-top: 8px; min-height: 0 !important; }
+#docs-head > * { min-height: 0 !important; }
+#docs-head > :first-child { flex: 1 1 auto !important; }
+#docs-head #clear-btn, #clear-btn {
+    flex: 0 0 auto !important; align-self: center !important;
+    width: auto !important; min-width: 0 !important; max-width: max-content !important;
+    height: 24px !important; min-height: 0 !important; line-height: 24px !important;
+    padding: 0 10px !important; margin: 0 !important;
+    font-size: .76rem !important; font-weight: 500 !important; border-radius: 7px !important;
+    color: var(--muted) !important; border: none !important; background: transparent !important;
+}
+#docs-head #clear-btn:hover, #clear-btn:hover { color: var(--accent) !important; background: var(--accent-soft) !important; }
+
+.doc-slot { position: relative; gap: 0 !important; margin: 0 !important; }
+.doc-slot > .block, .doc-slot .block { padding: 0 !important; }
 .doc {
-    display: flex; gap: 12px; align-items: flex-start;
-    padding: 11px 13px; margin-bottom: 8px; border-radius: 12px;
+    display: flex; gap: 12px; align-items: flex-start; width: 100%; box-sizing: border-box;
+    padding: 12px 46px 12px 14px; border-radius: 12px;
     background: var(--surface-2); border: 1px solid var(--line);
 }
 .doc .dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; flex: none; background: var(--muted); }
@@ -131,8 +152,17 @@ footer { display: none !important; }
 .doc-note { margin-top: 2px; font-size: .76rem; color: var(--muted); }
 .bar { height: 3px; margin-top: 9px; border-radius: 3px; background: var(--line); overflow: hidden; }
 .bar span { display: block; height: 100%; background: var(--accent); border-radius: 3px; transition: width .25s ease; }
-.doc-empty { padding: 20px 12px; text-align: center; font-size: .86rem; color: var(--muted); }
+.doc-empty { padding: 18px 12px; text-align: center; font-size: .86rem; color: var(--muted); }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
+
+.doc-slot .rm {
+    position: absolute !important; top: 8px; right: 8px; z-index: 5;
+    width: 28px !important; min-width: 28px !important; height: 28px !important;
+    padding: 0 !important; border: none !important; border-radius: 8px !important;
+    background: transparent !important; color: var(--muted) !important;
+    font-size: 1.15rem !important; line-height: 1;
+}
+.doc-slot .rm:hover { color: var(--danger) !important; background: rgba(255, 142, 155, .12) !important; }
 
 #chat { background: transparent !important; border: none !important; }
 #chat .message-wrap { max-width: 820px; margin: 0 auto; padding-bottom: 12px; }
@@ -177,117 +207,183 @@ footer { display: none !important; }
 
 SIDEBAR_HEAD = f"""
 <div class="brand"><span class="mark"></span><span class="name">Ask PDF</span></div>
-<p class="tagline">Ask questions about your documents. Answers cite the pages they came from.</p>
-<div class="model-line">model <b>{html.escape(settings.llm_model)}</b></div>
+<p class="tagline">Intelligent Document Search and Retrieval</p>
+
 """
+
+EMPTY_HTML = '<div class="doc-empty">No documents yet</div>'
 
 PLACEHOLDER = (
     "## What would you like to know?\n"
     "Add a PDF on the left, then ask anything about it."
 )
 
+# (kind, name, note, fraction)  kind: ok | err | busy | wait
 Item = tuple[str, str, str, float]
 
 
-def render_docs(items: list[Item]) -> str:
-    if not items:
-        return '<div class="doc-empty">No documents yet</div>'
-    rows = []
-    for kind, name, note, frac in items:
-        bar = f'<div class="bar"><span style="width:{int(frac * 100)}%"></span></div>' if kind == "busy" else ""
-        rows.append(
-            f'<div class="doc {kind}"><span class="dot"></span><div class="doc-body">'
-            f'<div class="doc-name">{html.escape(name)}</div>'
-            f'<div class="doc-note">{html.escape(note)}</div>{bar}</div></div>'
-        )
-    return "".join(rows)
+# ----------------------------------------------------------------------------
+# Document list rendering
+# ----------------------------------------------------------------------------
+def render_doc(item: Item) -> str:
+    kind, name, note, frac = item
+    bar = f'<div class="bar"><span style="width:{int(frac * 100)}%"></span></div>' if kind == "busy" else ""
+    return (
+        f'<div class="doc {kind}"><span class="dot"></span><div class="doc-body">'
+        f'<div class="doc-name">{html.escape(name)}</div>'
+        f'<div class="doc-note">{html.escape(note)}</div>{bar}</div></div>'
+    )
 
 
-def add_files(new, current):
-    """Append newly picked PDFs to the ones already in the list (skip duplicate names)."""
-    merged = list(current or [])
-    seen = {Path(getattr(f, "name", f)).name for f in merged}
+def pack(session: dict, items: list[Item]) -> tuple:
+    """Build the tuple of updates for [session, empty, row0, html0, row1, html1, ...]."""
+    updates: list = [session, gr.update(visible=not items)]
+    for i in range(MAX_DOCS):
+        if i < len(items):
+            updates += [gr.update(visible=True), gr.update(value=render_doc(items[i]))]
+        else:
+            updates += [gr.update(visible=False), gr.update()]
+    return tuple(updates)
+
+
+# ----------------------------------------------------------------------------
+# Handlers
+# ----------------------------------------------------------------------------
+def add_files(new, paths):
+    """Append newly picked PDFs to the list (skip duplicate names, respect MAX_DOCS).
+    Returns the new list and None, which empties the drop zone so it is ready for more."""
+    merged = list(paths or [])
+    seen = {Path(p).name for p in merged}
+    skipped_limit = False
     for f in ([new] if isinstance(new, (str, Path)) else list(new or [])):
-        raw = getattr(f, "name", f)
-        if Path(raw).name not in seen:
-            merged.append(raw)
-            seen.add(Path(raw).name)
-    return merged
+        raw = str(getattr(f, "name", f))
+        name = Path(raw).name
+        if name in seen:
+            continue
+        if len(merged) >= MAX_DOCS:
+            skipped_limit = True
+            continue
+        merged.append(raw)
+        seen.add(name)
+    if skipped_limit:
+        gr.Warning(f"Limit of {MAX_DOCS} documents reached. Remove one to add another.")
+    return merged, None
 
 
-def process_files(files, session):
-    """Index each PDF in a worker thread and stream live progress into the sidebar."""
-    if not files:
-        yield {"docs": {}}, render_docs([])
-        return
+def make_remove(index: int):
+    def remove(paths):
+        paths = list(paths or [])
+        if 0 <= index < len(paths):
+            paths.pop(index)
+        return paths
 
-    paths = [files] if isinstance(files, (str, Path)) else list(files)
-    raws = [getattr(p, "name", p) for p in paths]
-    names = [Path(r).name for r in raws]
+    return remove
+
+
+def process_files(paths, session):
+    """Index every PDF in `paths`, streaming per-row progress. Files already handled in
+    this session (indexed or failed) are reused, so removing a file never re-indexes the rest."""
+    paths = list(paths or [])
+    names = [Path(p).name for p in paths]
+    prev = session or {}
+    prev_docs, prev_notes, prev_errs = prev.get("docs", {}), prev.get("notes", {}), prev.get("errors", {})
 
     docs: dict[str, str] = {}
-    done: list[Item] = []
+    notes: dict[str, str] = {}
+    errs: dict[str, str] = {}
+    items: list[Item] = []
 
-    for i, (raw, name) in enumerate(zip(raws, names)):
+    for name in names:
+        if name in prev_docs:
+            docs[name], notes[name] = prev_docs[name], prev_notes.get(name, "Ready")
+            items.append(("ok", name, notes[name], 1.0))
+        elif name in prev_errs:
+            errs[name] = prev_errs[name]
+            items.append(("err", name, errs[name], 1.0))
+        else:
+            items.append(("wait", name, "Waiting", 0.0))
+
+    def snapshot() -> dict:
+        return {"docs": dict(docs), "notes": dict(notes), "errors": dict(errs)}
+
+    yield pack(snapshot(), items)
+
+    for i, (raw, name) in enumerate(zip(paths, names)):
+        if items[i][0] != "wait":
+            continue
+
         state = {"msg": "Starting", "frac": 0.0}
         box: dict = {}
 
         def work(raw=raw, state=state, box=box) -> None:
             try:
                 box["out"] = ingest_pdf(raw, lambda m, f: state.update(msg=m, frac=f))
-            except Exception as e:  
+            except Exception as e:  # one bad file must not block the rest
                 box["err"] = e
 
         t0 = time.perf_counter()
         worker = threading.Thread(target=work, daemon=True)
         worker.start()
-        queued: list[Item] = [("wait", n, "Waiting", 0.0) for n in names[i + 1:]]
+
+        last = None
         while worker.is_alive():
-            busy: Item = ("busy", name, state["msg"], state["frac"])
-            yield {"docs": dict(docs)}, render_docs(done + [busy] + queued)
-            time.sleep(0.3)
+            sig = (state["msg"], int(state["frac"] * 100))
+            if sig != last:
+                items[i] = ("busy", name, state["msg"], state["frac"])
+                yield pack(snapshot(), items)
+                last = sig
+            time.sleep(0.25)
         worker.join()
 
         if "err" in box:
-            done.append(("err", name, str(box["err"]), 1.0))
+            errs[name] = str(box["err"])
+            items[i] = ("err", name, errs[name], 1.0)
         else:
             digest, cached = box["out"]
             docs[name] = digest
-            note = "Loaded from cache" if cached else f"Indexed in {time.perf_counter() - t0:.0f}s"
-            done.append(("ok", name, note, 1.0))
-
-    yield {"docs": docs}, render_docs(done)
+            notes[name] = "Loaded from cache" if cached else f"Indexed in {time.perf_counter() - t0:.0f}s"
+            items[i] = ("ok", name, notes[name], 1.0)
+        yield pack(snapshot(), items)
 
 
 def respond(message, history, session):
-    digests = list((session or {"docs": {}})["docs"].values())
+    digests = list((session or {"docs": {}}).get("docs", {}).values())
     try:
         yield from answer_stream(message, history, digests)
     except Exception as e:
         yield f"Something went wrong: {e}"
 
 
+# ----------------------------------------------------------------------------
+# UI
+# ----------------------------------------------------------------------------
 with gr.Blocks(title="Ask PDF", theme=THEME, css=CSS, js=FORCE_DARK_JS) as demo:
-    session = gr.State({"docs": {}})
+    session = gr.State({"docs": {}, "notes": {}, "errors": {}})
+    paths = gr.State([])  # uploaded file paths, in display order
 
     with gr.Row(equal_height=False, elem_id="shell"):
         with gr.Column(elem_id="side", scale=0, min_width=320):
             gr.HTML(SIDEBAR_HEAD)
-            gr.HTML('<div class="label">Documents</div>')
-            add_btn = gr.UploadButton(
-                "Add PDFs",
-                file_types=[".pdf"],
-                file_count="multiple",
-                variant="secondary",
-                elem_id="add-btn",
-            )
             files = gr.File(
                 show_label=False,
                 file_types=[".pdf"],
                 file_count="multiple",
-                elem_id="files",
+                elem_id="drop",
+                height=100,
             )
-            status = gr.HTML(render_docs([]))
+            with gr.Row(elem_id="docs-head"):
+                gr.HTML('<div class="label">Documents</div>')
+                clear_btn = gr.Button("Clear all", size="sm", elem_id="clear-btn")
+
+            empty = gr.HTML(EMPTY_HTML)
+            slot_rows: list[gr.Row] = []
+            slot_html: list[gr.HTML] = []
+            slot_rm: list[gr.Button] = []
+            for _ in range(MAX_DOCS):
+                with gr.Row(visible=False, elem_classes="doc-slot") as row:
+                    slot_html.append(gr.HTML(""))
+                    slot_rm.append(gr.Button("\u00d7", elem_classes="rm"))
+                slot_rows.append(row)
 
         with gr.Column(elem_id="main", scale=1):
             chatbot = gr.Chatbot(
@@ -319,13 +415,22 @@ with gr.Blocks(title="Ask PDF", theme=THEME, css=CSS, js=FORCE_DARK_JS) as demo:
                 show_progress="hidden",
             )
 
-    add_btn.upload(add_files, inputs=[add_btn, files], outputs=[files], show_progress="hidden")
-    files.change(
-        process_files,
-        inputs=[files, session],
-        outputs=[session, status],
-        show_progress="hidden",
-    )
+    PROCESS_OUTPUTS = [session, empty]
+    for _row, _html in zip(slot_rows, slot_html):
+        PROCESS_OUTPUTS += [_row, _html]
+
+    def _process(trigger):
+        return trigger.then(
+            process_files,
+            inputs=[paths, session],
+            outputs=PROCESS_OUTPUTS,
+            show_progress="hidden",
+        )
+
+    _process(files.upload(add_files, inputs=[files, paths], outputs=[paths, files], show_progress="hidden"))
+    _process(clear_btn.click(lambda: [], outputs=[paths], show_progress="hidden"))
+    for _i, _btn in enumerate(slot_rm):
+        _process(_btn.click(make_remove(_i), inputs=[paths], outputs=[paths], show_progress="hidden"))
 
 
 if __name__ == "__main__":
