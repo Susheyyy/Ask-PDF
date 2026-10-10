@@ -18,7 +18,9 @@ def _bool(name: str, default: bool) -> bool:
 @dataclass(frozen=True)
 class Settings:
     llm_model: str = os.getenv("LLM_MODEL", "gemini-3.8-flash")
-    llm_temperature: float = float(os.getenv("LLM_TEMPERATURE", "0.2"))
+    llm_temperature: float = float(os.getenv("LLM_TEMPERATURE", "1.0"))
+
+    llm_thinking: str = os.getenv("LLM_THINKING", "low").strip().lower()
 
     embedding_model: str = os.getenv("EMBEDDING_MODEL", "BAAI/bge-small-en-v1.5")
 
@@ -32,6 +34,7 @@ class Settings:
     max_pages: int = int(os.getenv("MAX_PAGES", "300"))
 
     ocr_enabled: bool = _bool("OCR_ENABLED", True)
+
     extract_tables: bool = _bool("EXTRACT_TABLES", False)
     share: bool = _bool("GRADIO_SHARE", False)
 
