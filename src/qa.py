@@ -40,7 +40,7 @@ ANSWER_PROMPT = ChatPromptTemplate.from_messages(
 def get_llm() -> ChatGoogleGenerativeAI:
     require_api_key()
     kwargs: dict[str, Any] = {}
-    if settings.llm_thinking:
+    if settings.llm_thinking and settings.llm_thinking not in {"off", "false", "none", "0"}:
         kwargs["thinking_config"] = {"thinking_level": settings.llm_thinking}
     return ChatGoogleGenerativeAI(
         model=settings.llm_model,
@@ -50,7 +50,6 @@ def get_llm() -> ChatGoogleGenerativeAI:
 
 
 def _text(content: Any) -> str:
-    """Normalise LangChain / Gradio message content (str or list of parts) to plain text."""
     if isinstance(content, str):
         return content
     if isinstance(content, list):
@@ -65,7 +64,6 @@ def _text(content: Any) -> str:
 
 
 def to_messages(history: list[dict], limit: int = 6) -> list[BaseMessage]:
-    """Last few turns as LangChain messages, with the sources footer stripped from answers."""
     messages: list[BaseMessage] = []
     for m in (history or [])[-limit:]:
         text = _text(m.get("content")).split(SOURCES_MARK)[0].strip()
@@ -79,8 +77,6 @@ def to_messages(history: list[dict], limit: int = 6) -> list[BaseMessage]:
 
 
 def retrieval_query(question: str, history: list[dict]) -> str:
-    """Short follow-ups ('make it shorter') borrow the previous question for retrieval,
-    with no extra LLM call."""
     if history and len(question.split()) < 8:
         for m in reversed(history):
             if m.get("role") == "user":
@@ -106,7 +102,6 @@ def format_sources(hits: list[tuple[Document, float]]) -> str:
 
 
 def answer_stream(question: str, history: list[dict], digests: list[str]) -> Iterator[str]:
-    """Yield the growing answer string; the final yield includes the sources line."""
     if not digests:
         yield "Add a PDF first, then ask your question."
         return
